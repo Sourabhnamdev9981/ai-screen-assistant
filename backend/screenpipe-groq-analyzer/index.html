@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Video Assistant</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { height: 100%; font-family: 'Segoe UI', sans-serif; background: #f9f9f9; }
+    .container { display: flex; height: 100vh; }
+
+    .sidebar {
+      width: 280px;
+      background: #e0e0e0;
+      padding: 15px;
+      overflow-y: auto;
+      border-right: 1px solid #ccc;
+    }
+
+    .frame-container { margin-top: 10px; }
+    .video-frame {
+      position: relative;
+      margin-bottom: 10px;
+    }
+    .video-frame img {
+      width: 100%;
+      border-radius: 6px;
+    }
+    .frame-time {
+      position: absolute;
+      bottom: 5px;
+      right: 10px;
+      background-color: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      background: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+    }
+
+    .input-area {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    textarea {
+      flex: 1;
+      resize: none;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #aaa;
+    }
+
+    .btn, .upload-label {
+      background-color: #007bff;
+      color: white;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+
+    .upload-label {
+      cursor: pointer;
+      margin-right: 10px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .control-panel {
+      display: flex;
+      margin-top: 15px;
+      gap: 10px;
+    }
+
+    video {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- Sidebar with frames -->
+  <div class="sidebar">
+    <h3>Video Frames</h3>
+    <div id="frames" class="frame-container"></div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main-content">
+    <div class="chat-messages" id="chat">
+      <p><strong>AI:</strong> Upload a video or start recording to begin.</p>
+    </div>
+
+    <div class="input-area">
+      <textarea id="userInput" placeholder="Ask AI about the errors..."></textarea>
+      <button class="btn" onclick="sendMessage()">Send</button>
+    </div>
+
+    <div class="control-panel">
+      <label class="upload-label">
+        <span class="material-icons">attach_file</span>
+        <input type="file" id="videoUpload" accept="video/*" onchange="handleVideoUpload(event)">
+      </label>
+      <button class="btn" onclick="startRecording()">Start Recording</button>
+      <button class="btn" onclick="stopRecording()">Stop Recording</button>
+    </div>
+
+    <video id="video" controls></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+  </div>
+</div>
+
+<script>
+  let mediaRecorder, recordedChunks = [];
+
+  function startRecording() {
+    navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then(stream => {
+      mediaRecorder = new MediaRecorder(stream);
+      recordedChunks = [];
+      mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const video = document.getElementById("video");
+        video.src = url;
+        extractFrames(video);
+      };
+      mediaRecorder.start();
+      alert("Recording started...");
+    });
+  }
+
+  function stopRecording() {
+    mediaRecorder?.stop();
+    alert("Recording stopped. Processing video...");
+  }
+
+  function handleVideoUpload(event) {
+    const file = event.target.files[0];
+    const url = URL.createObjectURL(file);
+    const video = document.getElementById("video");
+    video.src = url;
+    video.onloadeddata = () => extractFrames(video);
+  }
+
+  function extractFrames(video) {
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const framesContainer = document.getElementById("frames");
+
+    framesContainer.innerHTML = "";
+    const interval = 1; // capture frame every 1 second
+    let currentTime = 0;
+
+    const capture = () => {
+      if (currentTime >= video.duration) return;
+      video.currentTime = currentTime;
+      video.onseeked = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const imgUrl = canvas.toDataURL("image/jpeg");
+        const img = document.createElement("img");
+        img.src = imgUrl;
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "video-frame";
+        const timeTag = document.createElement("span");
+        timeTag.className = "frame-time";
+        timeTag.textContent = `${currentTime.toFixed(0)}s`;
+
+        wrapper.appendChild(img);
+        wrapper.appendChild(timeTag);
+        framesContainer.appendChild(wrapper);
+
+        currentTime += interval;
+        capture();
+      };
+    };
+
+    capture();
+  }
+
+  function sendMessage() {
+    const input = document.getElementById("userInput");
+    const chat = document.getElementById("chat");
+
+    if (!input.value.trim()) return;
+
+    const userMsg = document.createElement("p");
+    userMsg.innerHTML = `<strong>You:</strong> ${input.value}`;
+    chat.appendChild(userMsg);
+
+    const botMsg = document.createElement("p");
+    botMsg.innerHTML = `<strong>AI:</strong> Thinking... (Here is where ChatGPT would respond)`;
+    chat.appendChild(botMsg);
+
+    input.value = "";
+    chat.scrollTop = chat.scrollHeight;
+  }
+</script>
+</body>
+</html>
